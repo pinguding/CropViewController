@@ -1,0 +1,21 @@
+{
+  "images" : [
+    {
+      "filename" : "%C5%A9%B1%E2%BA%AF%C8%AF_Blue_Sea_%BC%AD%C1%A4%B9%F6%C1%AF_Ver._Only_Piano_%B1%D7%B6%F3%C6%FA%B8%AE%BF%C0%BF%EB9.jpg",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
