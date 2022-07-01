@@ -16,7 +16,6 @@
 		8358913E28532E8000EE7BF0 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8358913C28532E8000EE7BF0 /* LaunchScreen.storyboard */; };
 		8358914A28534F7000EE7BF0 /* CropIndicatorView.xib in Resources */ = {isa = PBXBuildFile; fileRef = 8358914928534F7000EE7BF0 /* CropIndicatorView.xib */; };
 		83EE54152862B0470087F909 /* CropViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83EE54142862B0470087F909 /* CropViewController.swift */; };
-		83EE54182862B40D0087F909 /* QDSKit in Frameworks */ = {isa = PBXBuildFile; productRef = 83EE54172862B40D0087F909 /* QDSKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,7 +37,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				83EE54182862B40D0087F909 /* QDSKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -95,7 +93,6 @@
 			);
 			name = CropPractice;
 			packageProductDependencies = (
-				83EE54172862B40D0087F909 /* QDSKit */,
 			);
 			productName = CropPractice;
 			productReference = 8358912E28532E7F00EE7BF0 /* CropPractice.app */;
@@ -126,7 +123,6 @@
 			);
 			mainGroup = 8358912528532E7F00EE7BF0;
 			packageReferences = (
-				83EE54162862B40D0087F909 /* XCRemoteSwiftPackageReference "ios-frameworks-QDSKit" */,
 			);
 			productRefGroup = 8358912F28532E7F00EE7BF0 /* Products */;
 			projectDirPath = "";
@@ -382,25 +378,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		83EE54162862B40D0087F909 /* XCRemoteSwiftPackageReference "ios-frameworks-QDSKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/mathpresso/ios-frameworks-QDSKit";
-			requirement = {
-				kind = upToNextMinorVersion;
-				minimumVersion = 1.3.10;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		83EE54172862B40D0087F909 /* QDSKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 83EE54162862B40D0087F909 /* XCRemoteSwiftPackageReference "ios-frameworks-QDSKit" */;
-			productName = QDSKit;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 8358912628532E7F00EE7BF0 /* Project object */;
 }
