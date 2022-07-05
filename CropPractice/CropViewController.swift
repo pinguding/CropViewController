@@ -59,6 +59,7 @@ class CropViewController: UIViewController {
 
     private var imageFrameOnScreen: CGRect = .zero
     private var originImageFrameOnScreen: CGRect = .zero
+    private var currentImageScale: CGFloat = 1
 
     private var imageFrameScale: CGFloat = 1
     private var imageFrameLeadingPadding: CGFloat = 0
@@ -119,6 +120,9 @@ class CropViewController: UIViewController {
             self.calculateImageSizeOnScreenAndFitCropLayerView()
             let currentImageFrameOnScreen = self.imageFrameOnScreen
 
+            print("Previous: ", previousImageFrameOnScreen)
+            print("Current : ", currentImageFrameOnScreen)
+
             let previousCropBounds = self.calcCurrentCropRect()
             var currentCropBounds = previousCropBounds
 
@@ -165,12 +169,19 @@ class CropViewController: UIViewController {
 
         let ratio = self.imageFrameOnScreen.width * scale / self.originImageFrameOnScreen.width
 
-        if ratio < 1 || ratio > 3 {
+        self.currentImageScale = ratio
+
+        if ratio < 1 {
             scale = 1
+            self.currentImageScale = 1
+        }
+        else if ratio > 3 {
+            scale = 1
+            self.currentImageScale = 3
         }
 
-        let dw = self.imageFrameOnScreen.size.width * (scale - 1)   //Width Derivative
-        let dh = self.imageFrameOnScreen.size.height * (scale - 1)  //Height Derivative
+        let dw = self.imageFrameOnScreen.size.width * (scale - 1)   //Width Delta Value
+        let dh = self.imageFrameOnScreen.size.height * (scale - 1)  //Height Delta Value
         self.imageFrameOnScreen.size.width *= scale
         self.imageFrameOnScreen.size.height *= scale
         self.imageFrameOnScreen.origin.x -= dw / 2
@@ -187,9 +198,22 @@ class CropViewController: UIViewController {
 
         let transition = self.cropLayerPanGestureSender.translation(in: self.cropLayerView)
 
-        self.imageView.center = CGPoint(x: self.imageView.center.x + transition.x, y: self.imageView.center.y + transition.y)
+        let currentIndicatorBounds = self.calcCurrentCropRect()
 
-        self.imageFrameOnScreen.origin = CGPoint(x: self.imageFrameOnScreen.origin.x + transition.x, y: self.imageFrameOnScreen.origin.y + transition.y)
+        var dx = transition.x
+        var dy = transition.y
+
+        if self.imageFrameOnScreen.minX + dx > currentIndicatorBounds.minX || self.imageFrameOnScreen.maxX + dx < currentIndicatorBounds.maxX {
+            dx = 0 //X Coordinate Delta Value
+        }
+
+        if self.imageFrameOnScreen.minY + dy > currentIndicatorBounds.minY || self.imageFrameOnScreen.maxY + dy < currentIndicatorBounds.maxY {
+            dy = 0 //Y Coordinate Delta Value
+        }
+
+        self.imageView.center = CGPoint(x: self.imageView.center.x + dx, y: self.imageView.center.y + dy)
+
+        self.imageFrameOnScreen.origin = CGPoint(x: self.imageFrameOnScreen.origin.x + dx, y: self.imageFrameOnScreen.origin.y + dy)
 
         self.updateImageFramePadding()
 
@@ -226,12 +250,34 @@ extension CropViewController {
         guard let indicatorView = self.edgeIndicator[.topLeft] else { return }
 
         let transition = sender.translation(in: indicatorView)
+        let currentBounds = self.calcCurrentCropRect()
 
-        let changedX = indicatorView.center.x - transition.x
-        let changedY = indicatorView.center.y - transition.y
+        var changedX = indicatorView.center.x - transition.x
+        var changedY = indicatorView.center.y - transition.y
+        var changedWidth = self.edgeCoordinates[.topRight]!.x - changedX
+        var changedHeight = self.edgeCoordinates[.bottomLeft]!.y - changedY
 
-        let draggedRect = CGRect(x: changedX, y: changedY, width: self.edgeCoordinates[.topRight]!.x - changedX, height: self.edgeCoordinates[.bottomLeft]!.y - changedY)
+        if changedX < self.imageFrameLeadingPadding {
+            changedX = self.imageFrameLeadingPadding
+            changedWidth = currentBounds.maxX - changedX
+        }
 
+        if changedY < self.imageFrameTopPadding {
+            changedY = self.imageFrameTopPadding
+            changedHeight = currentBounds.maxY - changedY
+        }
+
+        if changedWidth < self.indicatorSize.width {
+            changedX = currentBounds.maxX - self.indicatorSize.width
+            changedWidth = self.indicatorSize.width
+        }
+
+        if changedHeight < self.indicatorSize.height {
+            changedY = currentBounds.maxY - self.indicatorSize.width
+            changedHeight = self.indicatorSize.height
+        }
+
+        let draggedRect = CGRect(x: changedX, y: changedY, width: changedWidth, height: changedHeight)
 
         self.drawCropTransparentPaths(bounds: draggedRect)
 
@@ -242,11 +288,32 @@ extension CropViewController {
         guard let indicatorView = self.edgeIndicator[.topRight] else { return }
 
         let transition = sender.translation(in: indicatorView)
+        let currentBounds = self.calcCurrentCropRect()
 
         let changedX = indicatorView.center.x + transition.y
-        let changedY = indicatorView.center.y - transition.x
+        var changedY = indicatorView.center.y - transition.x
+        var changedWidth = changedX - self.edgeCoordinates[.topLeft]!.x
+        var changedHeight = self.edgeCoordinates[.bottomRight]!.y - changedY
 
-        let draggedRect = CGRect(x: self.edgeCoordinates[.topLeft]!.x, y: changedY, width: changedX - self.edgeCoordinates[.topLeft]!.x, height: self.edgeCoordinates[.bottomRight]!.y - changedY)
+        if changedX > self.cropLayerView.frame.width - self.imageFrameTrailingPadding {
+            changedWidth = currentBounds.width
+        }
+
+        if changedY < self.imageFrameTopPadding {
+            changedY = self.imageFrameTopPadding
+            changedHeight = currentBounds.maxY - changedY
+        }
+
+        if changedWidth < self.indicatorSize.width {
+            changedWidth = self.indicatorSize.width
+        }
+
+        if changedHeight < self.indicatorSize.height {
+            changedY = currentBounds.maxY - self.indicatorSize.height
+            changedHeight = self.indicatorSize.height
+        }
+
+        let draggedRect = CGRect(x: currentBounds.origin.x, y: changedY, width: changedWidth, height: changedHeight)
 
         self.drawCropTransparentPaths(bounds: draggedRect)
 
@@ -257,11 +324,32 @@ extension CropViewController {
         guard let indicatorView = self.edgeIndicator[.bottomLeft] else { return }
 
         let transition = sender.translation(in: indicatorView)
+        let currentBounds = self.calcCurrentCropRect()
 
-        let changedX = indicatorView.center.x - transition.y
+        var changedX = indicatorView.center.x - transition.y
         let changedY = indicatorView.center.y + transition.x
+        var changedWidth = self.edgeCoordinates[.bottomRight]!.x - changedX
+        var changedHeight = changedY - self.edgeCoordinates[.topLeft]!.y
 
-        let draggedRect = CGRect(x: changedX, y: self.edgeCoordinates[.topLeft]!.y, width: self.edgeCoordinates[.bottomRight]!.x - changedX, height: changedY - self.edgeCoordinates[.topLeft]!.y)
+        if changedX < self.imageFrameLeadingPadding {
+            changedX = self.imageFrameLeadingPadding
+            changedWidth = currentBounds.maxX - changedX
+        }
+
+        if changedY > self.cropLayerView.frame.height - self.imageFrameBottomPadding {
+            changedHeight = currentBounds.height
+        }
+
+        if changedWidth < self.indicatorSize.width {
+            changedX = currentBounds.maxX - self.indicatorSize.width
+            changedWidth = self.indicatorSize.width
+        }
+
+        if changedHeight < self.indicatorSize.height {
+            changedHeight = self.indicatorSize.height
+        }
+
+        let draggedRect = CGRect(x: changedX, y: currentBounds.origin.y, width: changedWidth, height: changedHeight)
 
         self.drawCropTransparentPaths(bounds: draggedRect)
 
@@ -272,11 +360,30 @@ extension CropViewController {
         guard let indicatorView = self.edgeIndicator[.bottomRight] else { return }
 
         let transition = sender.translation(in: indicatorView)
+        let currentBounds = self.calcCurrentCropRect()
 
         let changedX = indicatorView.center.x + transition.x
         let changedY = indicatorView.center.y + transition.y
+        var changedWidth = changedX - self.edgeCoordinates[.bottomLeft]!.x
+        var changedHeight = changedY - self.edgeCoordinates[.topRight]!.y
 
-        let draggedRect = CGRect(x: self.edgeCoordinates[.topLeft]!.x, y: self.edgeCoordinates[.topLeft]!.y, width: changedX - self.edgeCoordinates[.bottomLeft]!.x, height: changedY - self.edgeCoordinates[.topRight]!.y)
+        if changedX > self.cropLayerView.frame.width - self.imageFrameTrailingPadding {
+            changedWidth = currentBounds.width
+        }
+
+        if changedY > self.cropLayerView.frame.height - self.imageFrameBottomPadding {
+            changedHeight = currentBounds.height
+        }
+
+        if changedWidth < self.indicatorSize.width {
+            changedWidth = self.indicatorSize.width
+        }
+
+        if changedHeight < self.indicatorSize.height {
+            changedHeight = self.indicatorSize.height
+        }
+
+        let draggedRect = CGRect(x: currentBounds.origin.x, y: currentBounds.origin.y, width: changedWidth, height: changedHeight)
 
         self.drawCropTransparentPaths(bounds: draggedRect)
 
@@ -336,9 +443,17 @@ extension CropViewController {
 
         self.imageFrameOnScreen = CGRect(x: (self.cropLayerView.frame.width - imageResize.width) / 2, y: (self.cropLayerView.frame.height - imageResize.height) / 2, width: imageResize.width, height: imageResize.height)
 
-        if self.originImageFrameOnScreen == .zero {
-            self.originImageFrameOnScreen = self.imageFrameOnScreen
-        }
+        // 변화량 이기때문에 벡터성분과는 관련이 없다.
+        let originDeltaWidth = self.imageFrameOnScreen.size.width * (self.currentImageScale - 1)
+        let originDeltaHeight = self.imageFrameOnScreen.size.height * (self.currentImageScale - 1)
+
+        // 팽창 방향과 수축 방향의 벡터가 Pinch Zoom 과 반대이기때문에 Multiplier 와 Divider 를 바꿔서 사용해줘야한다.
+        self.originImageFrameOnScreen.size.width = self.imageFrameOnScreen.size.width / self.currentImageScale
+        self.originImageFrameOnScreen.size.height = self.imageFrameOnScreen.size.height / self.currentImageScale
+
+        // 팽창 방향과 수축 방향의 벡터가 Pinch Zoom 과 반대이기때문에 Adder 와 Subtractor 를 바꿔서 사용해줘야한다.
+        self.originImageFrameOnScreen.origin.x = self.imageFrameOnScreen.origin.x + (originDeltaWidth / 2)
+        self.originImageFrameOnScreen.origin.y = self.imageFrameOnScreen.origin.y + (originDeltaHeight / 2)
 
         self.imageFrameLeadingPadding = self.imageFrameOnScreen.minX - self.cropLayerView.frame.minX
         self.imageFrameTrailingPadding = self.cropLayerView.frame.maxX - self.imageFrameOnScreen.maxX
@@ -348,12 +463,10 @@ extension CropViewController {
 
     private func drawCropTransparentPaths(bounds: CGRect) {
 
-        let newBounds = transformValidBoundArea(bounds: bounds)
-
         let cropLayerBounds = self.cropLayerView.frame
         let path = UIBezierPath()
         let pathRect = UIBezierPath(rect: cropLayerBounds)
-        let pathSmallRect = UIBezierPath(rect: newBounds)
+        let pathSmallRect = UIBezierPath(rect: bounds)
 
         path.append(pathRect)
         path.append(pathSmallRect.reversing())
@@ -362,7 +475,7 @@ extension CropViewController {
         layer.path = path.cgPath
 
         self.cropLayerView.layer.mask = layer
-        self.drawEdgeIndicator(bounds: newBounds)
+        self.drawEdgeIndicator(bounds: bounds)
     }
 
     private func drawEdgeIndicator(bounds: CGRect) {
@@ -398,43 +511,5 @@ extension CropViewController {
 
         let bottomPadding = self.cropLayerView.frame.maxY - self.imageFrameOnScreen.maxY
         self.imageFrameBottomPadding = bottomPadding < 0 ? 0 : bottomPadding
-    }
-
-    private func transformValidBoundArea(bounds: CGRect) -> CGRect {
-        var newBounds = bounds
-
-        let currentBounds = self.calcCurrentCropRect()
-
-        if bounds.minX < self.imageFrameLeadingPadding {
-            newBounds.origin.x = self.imageFrameLeadingPadding
-            newBounds.size.width = currentBounds.width
-        }
-
-        if bounds.maxX > self.cropLayerView.frame.width - self.imageFrameTrailingPadding {
-            newBounds.origin.x = currentBounds.origin.x
-            newBounds.size.width = currentBounds.width
-        }
-
-        if bounds.minY < self.imageFrameTopPadding {
-            newBounds.origin.y = self.imageFrameTopPadding
-            newBounds.size.height = currentBounds.height
-        }
-
-        if bounds.maxY > self.cropLayerView.frame.height - self.imageFrameBottomPadding {
-            newBounds.origin.y = currentBounds.origin.y
-            newBounds.size.height = currentBounds.height
-        }
-
-        if bounds.width < self.indicatorSize.width {
-            newBounds.size.width = self.indicatorSize.width
-            newBounds.origin.x = currentBounds.origin.x
-        }
-
-        if bounds.height < self.indicatorSize.height {
-            newBounds.size.height = self.indicatorSize.height
-            newBounds.origin.y = currentBounds.origin.y
-        }
-
-        return newBounds
     }
 }

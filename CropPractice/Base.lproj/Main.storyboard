@@ -73,7 +73,7 @@
                                         </connections>
                                     </view>
                                 </subviews>
-                                <color key="backgroundColor" systemColor="systemBackgroundColor"/>
+                                <color key="backgroundColor" white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
                                 <constraints>
                                     <constraint firstAttribute="bottom" secondItem="MRN-mn-uiZ" secondAttribute="bottom" id="40X-kP-ekU"/>
                                     <constraint firstItem="MRN-mn-uiZ" firstAttribute="top" secondItem="DVh-6z-wsW" secondAttribute="top" id="4sf-Mc-OdA"/>
