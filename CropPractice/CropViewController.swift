@@ -19,6 +19,10 @@ class CropViewController: UIViewController {
     @IBOutlet var cropLayerPanGestureSender: UIPanGestureRecognizer!
     @IBOutlet var cropLayerPinchGestureSender: UIPinchGestureRecognizer!
 
+    //MARK: - UIView Animation Duration
+
+    private let defaultAnimateDuration: CGFloat = 0.3
+
     //MARK: - Indicator Variables
 
     private let indicatorSize = CGSize(width: 44, height: 44)
@@ -148,7 +152,7 @@ class CropViewController: UIViewController {
                 }
             }
 
-            UIView.animate(withDuration: context.transitionDuration) {
+            UIView.animate(withDuration: self.defaultAnimateDuration) {
                 self.cropLayerView.layer.opacity = 1
                 Edge.allCases.forEach { edge in
                     self.edgeIndicator[edge]?.alpha = 1.0
@@ -180,18 +184,75 @@ class CropViewController: UIViewController {
             self.currentImageScale = 3
         }
 
-        let dw = self.imageFrameOnScreen.size.width * (scale - 1)   //Width Delta Value
-        let dh = self.imageFrameOnScreen.size.height * (scale - 1)  //Height Delta Value
-        self.imageFrameOnScreen.size.width *= scale
-        self.imageFrameOnScreen.size.height *= scale
-        self.imageFrameOnScreen.origin.x -= dw / 2
-        self.imageFrameOnScreen.origin.y -= dh / 2
+        self.imageFrameOnScreen = self.scalingBounds(bounds: self.imageFrameOnScreen, scale: scale)
+
+        let currentIndicatorBounds = self.calcCurrentCropRect()
+
+        if self.imageFrameOnScreen.maxX < currentIndicatorBounds.maxX {
+            let dx = currentIndicatorBounds.maxX - self.imageFrameOnScreen.maxX
+            self.imageView.center.x += dx
+            self.imageFrameOnScreen.origin.x += dx
+        }
+
+        if self.imageFrameOnScreen.minX > currentIndicatorBounds.minX {
+            let dx = currentIndicatorBounds.minX - self.imageFrameOnScreen.minX
+            self.imageView.center.x += dx
+            self.imageFrameOnScreen.origin.x += dx
+        }
+
+        if self.imageFrameOnScreen.maxY < currentIndicatorBounds.maxY {
+            let dy = currentIndicatorBounds.maxY - self.imageFrameOnScreen.maxY
+            self.imageView.center.y += dy
+            self.imageFrameOnScreen.origin.y += dy
+        }
+
+        if self.imageFrameOnScreen.minY > currentIndicatorBounds.minY {
+            let dy = currentIndicatorBounds.minY - self.imageFrameOnScreen.minY
+            self.imageView.center.y += dy
+            self.imageFrameOnScreen.origin.y += dy
+        }
 
         self.updateImageFramePadding()
 
         self.imageView.transform = self.imageView.transform.scaledBy(x: scale, y: scale)
+        self.fitCropBoundsOnImageFrameIfNeeded()
 
         self.cropLayerPinchGestureSender.scale = 1.0
+
+        switch self.cropLayerPinchGestureSender.state {
+        case .began:
+            self.cropLayerView.layer.mask = nil
+            
+            self.cropLayerView.layer.opacity = 0
+            Edge.allCases.forEach { edge in
+                self.edgeIndicator[edge]?.alpha = 0
+            }
+        case .ended, .cancelled, .failed:
+            var dx: CGFloat = 0
+            var dy: CGFloat = 0
+            var currentCropBounds = self.calcCurrentCropRect()
+            if self.currentImageScale < 1.1 {
+                dx = self.imageView.center.x - self.cropLayerView.center.x
+                dy = self.imageView.center.y - self.cropLayerView.center.y
+                self.imageFrameOnScreen.origin.x -= dx
+                self.imageFrameOnScreen.origin.y -= dy
+                currentCropBounds.origin.x -= dx
+                currentCropBounds.origin.y -= dy
+                self.updateImageFramePadding()
+            }
+            UIView.animate(withDuration: self.defaultAnimateDuration) {
+                self.cropLayerView.layer.opacity = 1
+                Edge.allCases.forEach { edge in
+                    self.edgeIndicator[edge]?.alpha = 1.0
+                }
+                self.imageView.center.x -= dx
+                self.imageView.center.y -= dy
+            }
+            self.drawCropTransparentPaths(bounds: currentCropBounds)
+
+        default:
+            break
+        }
     }
 
     @IBAction func cropLayerPanGesture(_ sender: Any) {
@@ -220,6 +281,29 @@ class CropViewController: UIViewController {
         self.cropLayerPanGestureSender.setTranslation(.zero, in: self.cropLayerView)
     }
 
+    @IBAction func imageRotationAction(_ sender: Any) {
+        let radian: CGFloat = -.pi / 2
+        self.originImageFrameOnScreen = self.rotate90(bounds: self.originImageFrameOnScreen)
+        self.imageFrameOnScreen = self.rotate90(bounds: self.imageFrameOnScreen)
+        let resizedImageFrameOnScreen = self.resizeImageFitOnCropLayerView(imageSize: self.imageFrameOnScreen, needScaling: true)
+        let imageViewScale = resizedImageFrameOnScreen.width / self.imageFrameOnScreen.width
+        self.imageFrameOnScreen = resizedImageFrameOnScreen
+        self.updateImageFramePadding()
+
+        UIView.animate(withDuration: self.defaultAnimateDuration) {
+            self.imageView.transform = self.imageView.transform
+                .rotated(by: radian)
+                .scaledBy(x: imageViewScale, y: imageViewScale)
+            self.imageView.center = self.cropLayerView.center
+            self.fitCropBoundsOnImageFrameIfNeeded()
+        }
+
+        print("===========================================================")
+        print("Original Image Size: ", self.originImageFrameOnScreen)
+        print("  Actual Image Size: ", self.imageFrameOnScreen)
+        print(" Current Crops Size: ", self.calcCurrentCropRect())
+        print("===========================================================")
+    }
 }
 
 //MARK: - Indicator Gesture Code
@@ -396,75 +480,19 @@ extension CropViewController {
 
     private func calculateImageSizeOnScreenAndFitCropLayerView() {
         guard let imageSize = imageView.image?.size else { return }
-        let viewSize = self.cropLayerView.frame.size
-        var imageResize = CGSize.zero
-        if imageSize.width > imageSize.height {
-            if imageSize.width / imageSize.height < viewSize.width / viewSize.height {
-                imageResize.width = viewSize.height * imageSize.width / imageSize.height
-                imageResize.height = viewSize.height
-            }
-            else if imageSize.width / imageSize.height > viewSize.width / viewSize.height {
-                imageResize.width = viewSize.width
-                imageResize.height = viewSize.width * imageSize.height / imageSize.width
-            }
-            else {
-                imageResize.width = viewSize.width
-                imageResize.height = viewSize.height
-            }
-        }
-        else if imageSize.width < imageSize.height {
-            if imageSize.height / imageSize.width < viewSize.height / viewSize.width {
-                imageResize.width = viewSize.width
-                imageResize.height = viewSize.width * imageSize.height / imageSize.width
-            }
-            else if imageSize.height / imageSize.width > viewSize.height / viewSize.width {
-                imageResize.width = viewSize.height * imageSize.width / imageSize.height
-                imageResize.height = viewSize.height
-            }
-            else {
-                imageResize.width = viewSize.width
-                imageResize.height = viewSize.height
-            }
-        }
-        else {
-            if viewSize.width > viewSize.height {
-                imageResize.width = viewSize.height
-                imageResize.height = viewSize.height
-            }
-            else if viewSize.width < viewSize.height {
-                imageResize.width = viewSize.width
-                imageResize.height = viewSize.width
-            }
-            else {
-                imageResize.width = viewSize.width
-                imageResize.height = viewSize.height
-            }
-        }
 
-        self.imageFrameOnScreen = CGRect(x: (self.cropLayerView.frame.width - imageResize.width) / 2, y: (self.cropLayerView.frame.height - imageResize.height) / 2, width: imageResize.width, height: imageResize.height)
+        self.imageFrameOnScreen = self.resizeImageFitOnCropLayerView(imageSize: CGRect(origin: .zero, size: imageSize), needScaling: false)
 
-        // 변화량 이기때문에 벡터성분과는 관련이 없다.
-        let originDeltaWidth = self.imageFrameOnScreen.size.width * (self.currentImageScale - 1)
-        let originDeltaHeight = self.imageFrameOnScreen.size.height * (self.currentImageScale - 1)
+        self.imageFrameOnScreen = self.scalingBounds(bounds: self.imageFrameOnScreen, scale: self.currentImageScale)
+        self.originImageFrameOnScreen = self.scalingBounds(bounds: self.imageFrameOnScreen, scale: 1/self.currentImageScale)
 
-        // 팽창 방향과 수축 방향의 벡터가 Pinch Zoom 과 반대이기때문에 Multiplier 와 Divider 를 바꿔서 사용해줘야한다.
-        self.originImageFrameOnScreen.size.width = self.imageFrameOnScreen.size.width / self.currentImageScale
-        self.originImageFrameOnScreen.size.height = self.imageFrameOnScreen.size.height / self.currentImageScale
-
-        // 팽창 방향과 수축 방향의 벡터가 Pinch Zoom 과 반대이기때문에 Adder 와 Subtractor 를 바꿔서 사용해줘야한다.
-        self.originImageFrameOnScreen.origin.x = self.imageFrameOnScreen.origin.x + (originDeltaWidth / 2)
-        self.originImageFrameOnScreen.origin.y = self.imageFrameOnScreen.origin.y + (originDeltaHeight / 2)
-
-        self.imageFrameLeadingPadding = self.imageFrameOnScreen.minX - self.cropLayerView.frame.minX
-        self.imageFrameTrailingPadding = self.cropLayerView.frame.maxX - self.imageFrameOnScreen.maxX
-        self.imageFrameTopPadding = self.imageFrameOnScreen.minY - self.cropLayerView.frame.minY
-        self.imageFrameBottomPadding = self.cropLayerView.frame.maxY - self.imageFrameOnScreen.maxY
+        self.updateImageFramePadding()
     }
 
     private func drawCropTransparentPaths(bounds: CGRect) {
 
         let cropLayerBounds = self.cropLayerView.frame
-        let path = UIBezierPath()
+         let path = UIBezierPath()
         let pathRect = UIBezierPath(rect: cropLayerBounds)
         let pathSmallRect = UIBezierPath(rect: bounds)
 
@@ -511,5 +539,109 @@ extension CropViewController {
 
         let bottomPadding = self.cropLayerView.frame.maxY - self.imageFrameOnScreen.maxY
         self.imageFrameBottomPadding = bottomPadding < 0 ? 0 : bottomPadding
+    }
+
+    private func rotate90(bounds: CGRect) -> CGRect {
+        let centerX: CGFloat = bounds.midX
+        let centerY: CGFloat = bounds.midY
+        let rotatedWidth: CGFloat = bounds.height
+        let rotatedHeight: CGFloat = bounds.width
+        let rotatedOriginX: CGFloat = centerX - rotatedWidth/2
+        let rotatedOriginY: CGFloat = centerY - rotatedHeight/2
+        return CGRect(origin: CGPoint(x: rotatedOriginX, y: rotatedOriginY), size: CGSize(width: rotatedWidth, height: rotatedHeight))
+    }
+
+    private func scalingBounds(bounds: CGRect, scale: CGFloat) -> CGRect {
+        var originX = bounds.origin.x
+        var originY = bounds.origin.y
+        let scaledWidth = bounds.size.width * scale
+        let scaledHeight = bounds.size.height * scale
+        let dw = bounds.size.width * (scale - 1)
+        let dh = bounds.size.height * (scale - 1)
+        originX -= dw/2
+        originY -= dh/2
+        return CGRect(x: originX, y: originY, width: scaledWidth, height: scaledHeight)
+    }
+
+    private func resizeImageFitOnCropLayerView(imageSize: CGRect, needScaling: Bool) -> CGRect {
+        var imageResize = CGRect.zero
+        let viewSize = self.cropLayerView.frame.size
+        if imageSize.width > imageSize.height {
+            if imageSize.width / imageSize.height < viewSize.width / viewSize.height {
+                imageResize.size.width = viewSize.height * imageSize.width / imageSize.height
+                imageResize.size.height = viewSize.height
+            }
+            else if imageSize.width / imageSize.height > viewSize.width / viewSize.height {
+                imageResize.size.width = viewSize.width
+                imageResize.size.height = viewSize.width * imageSize.height / imageSize.width
+            }
+            else {
+                imageResize.size.width = viewSize.width
+                imageResize.size.height = viewSize.height
+            }
+        }
+        else if imageSize.width < imageSize.height {
+            if imageSize.height / imageSize.width < viewSize.height / viewSize.width {
+                imageResize.size.width = viewSize.width
+                imageResize.size.height = viewSize.width * imageSize.height / imageSize.width
+            }
+            else if imageSize.height / imageSize.width > viewSize.height / viewSize.width {
+                imageResize.size.width = viewSize.height * imageSize.width / imageSize.height
+                imageResize.size.height = viewSize.height
+            }
+            else {
+                imageResize.size.width = viewSize.width
+                imageResize.size.height = viewSize.height
+            }
+        }
+        else {
+            if viewSize.width > viewSize.height {
+                imageResize.size.width = viewSize.height
+                imageResize.size.height = viewSize.height
+            }
+            else if viewSize.width < viewSize.height {
+                imageResize.size.width = viewSize.width
+                imageResize.size.height = viewSize.width
+            }
+            else {
+                imageResize.size.width = viewSize.width
+                imageResize.size.height = viewSize.height
+            }
+        }
+
+        if needScaling {
+            let scale = imageResize.width / imageSize.width
+            imageResize.origin = self.scalingBounds(bounds: imageSize, scale: scale).origin
+        }
+        else {
+            imageResize.origin.x = (self.cropLayerView.frame.width - imageResize.width) / 2
+            imageResize.origin.y = (self.cropLayerView.frame.height - imageResize.height) / 2
+        }
+
+        return imageResize
+    }
+
+    private func fitCropBoundsOnImageFrameIfNeeded() {
+        var cropBounds = self.calcCurrentCropRect()
+
+        if cropBounds.minX < self.imageFrameOnScreen.minX {
+            cropBounds.origin.x = self.imageFrameOnScreen.origin.x
+            cropBounds.size.width = cropBounds.maxX - self.imageFrameOnScreen.minX
+        }
+
+        if cropBounds.maxX > self.imageFrameOnScreen.maxX {
+            cropBounds.size.width = self.imageFrameOnScreen.maxX - cropBounds.minX
+        }
+
+        if cropBounds.minY < self.imageFrameOnScreen.minY {
+            cropBounds.origin.y = self.imageFrameOnScreen.origin.y
+            cropBounds.size.height = cropBounds.maxY - self.imageFrameOnScreen.minY
+        }
+
+        if cropBounds.maxY > self.imageFrameOnScreen.maxY {
+            cropBounds.size.height = self.imageFrameOnScreen.maxY - cropBounds.minY
+        }
+
+        self.drawCropTransparentPaths(bounds: cropBounds)
     }
 }
