@@ -124,9 +124,6 @@ class CropViewController: UIViewController {
             self.calculateImageSizeOnScreenAndFitCropLayerView()
             let currentImageFrameOnScreen = self.imageFrameOnScreen
 
-            print("Previous: ", previousImageFrameOnScreen)
-            print("Current : ", currentImageFrameOnScreen)
-
             let previousCropBounds = self.calcCurrentCropRect()
             var currentCropBounds = previousCropBounds
 
@@ -151,6 +148,9 @@ class CropViewController: UIViewController {
                     self.edgeCoordinates[edge] = CGPoint(x: currentCropBounds.maxX, y: currentCropBounds.maxY)
                 }
             }
+
+            self.imageView.transform = self.imageView.transform.scaledBy(x: 1/self.currentImageScale, y: 1/self.currentImageScale)
+            self.currentImageScale = 1
 
             UIView.animate(withDuration: self.defaultAnimateDuration) {
                 self.cropLayerView.layer.opacity = 1
@@ -220,31 +220,36 @@ class CropViewController: UIViewController {
         self.cropLayerPinchGestureSender.scale = 1.0
 
         switch self.cropLayerPinchGestureSender.state {
-        case .began:
-            self.cropLayerView.layer.mask = nil
-            
-            self.cropLayerView.layer.opacity = 0
-            Edge.allCases.forEach { edge in
-                self.edgeIndicator[edge]?.alpha = 0
-            }
         case .ended, .cancelled, .failed:
             var dx: CGFloat = 0
             var dy: CGFloat = 0
             var currentCropBounds = self.calcCurrentCropRect()
             if self.currentImageScale < 1.1 {
+                self.cropLayerView.layer.mask = nil
+
+                self.cropLayerView.layer.opacity = 0
+                Edge.allCases.forEach { edge in
+                    self.edgeIndicator[edge]?.alpha = 0
+                }
+
                 dx = self.imageView.center.x - self.cropLayerView.center.x
                 dy = self.imageView.center.y - self.cropLayerView.center.y
                 self.imageFrameOnScreen.origin.x -= dx
                 self.imageFrameOnScreen.origin.y -= dy
                 currentCropBounds.origin.x -= dx
                 currentCropBounds.origin.y -= dy
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    UIView.animate(withDuration: self.defaultAnimateDuration) {
+                        self.cropLayerView.layer.opacity = 1
+                        Edge.allCases.forEach { edge in
+                            self.edgeIndicator[edge]?.alpha = 1.0
+                        }
+                    }
+                }
                 self.updateImageFramePadding()
+
             }
             UIView.animate(withDuration: self.defaultAnimateDuration) {
-                self.cropLayerView.layer.opacity = 1
-                Edge.allCases.forEach { edge in
-                    self.edgeIndicator[edge]?.alpha = 1.0
-                }
                 self.imageView.center.x -= dx
                 self.imageView.center.y -= dy
             }
@@ -283,11 +288,11 @@ class CropViewController: UIViewController {
 
     @IBAction func imageRotationAction(_ sender: Any) {
         let radian: CGFloat = -.pi / 2
-        self.originImageFrameOnScreen = self.rotate90(bounds: self.originImageFrameOnScreen)
         self.imageFrameOnScreen = self.rotate90(bounds: self.imageFrameOnScreen)
-        let resizedImageFrameOnScreen = self.resizeImageFitOnCropLayerView(imageSize: self.imageFrameOnScreen, needScaling: true)
+        let resizedImageFrameOnScreen = self.resizeImageFitOnCropLayerView(imageSize: self.imageFrameOnScreen, needScaling: false)
         let imageViewScale = resizedImageFrameOnScreen.width / self.imageFrameOnScreen.width
         self.imageFrameOnScreen = resizedImageFrameOnScreen
+        self.originImageFrameOnScreen = self.imageFrameOnScreen
         self.updateImageFramePadding()
 
         UIView.animate(withDuration: self.defaultAnimateDuration) {
@@ -295,14 +300,9 @@ class CropViewController: UIViewController {
                 .rotated(by: radian)
                 .scaledBy(x: imageViewScale, y: imageViewScale)
             self.imageView.center = self.cropLayerView.center
+            self.currentImageScale = 1
             self.fitCropBoundsOnImageFrameIfNeeded()
         }
-
-        print("===========================================================")
-        print("Original Image Size: ", self.originImageFrameOnScreen)
-        print("  Actual Image Size: ", self.imageFrameOnScreen)
-        print(" Current Crops Size: ", self.calcCurrentCropRect())
-        print("===========================================================")
     }
 }
 
@@ -483,8 +483,7 @@ extension CropViewController {
 
         self.imageFrameOnScreen = self.resizeImageFitOnCropLayerView(imageSize: CGRect(origin: .zero, size: imageSize), needScaling: false)
 
-        self.imageFrameOnScreen = self.scalingBounds(bounds: self.imageFrameOnScreen, scale: self.currentImageScale)
-        self.originImageFrameOnScreen = self.scalingBounds(bounds: self.imageFrameOnScreen, scale: 1/self.currentImageScale)
+        self.originImageFrameOnScreen = self.imageFrameOnScreen
 
         self.updateImageFramePadding()
     }
